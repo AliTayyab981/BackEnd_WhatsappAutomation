@@ -13,7 +13,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: process.env.FRONTEND_URL, // Allow your frontend origin
+        origin: "https://front-end-whatsapp-automation.vercel.app/", // Allow your frontend origin
         methods: ['GET', 'POST'],        // Allow these methods
         credentials: true                // Allow cookies and credentials if needed
     }
@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL, // Frontend URL
+    origin: "https://front-end-whatsapp-automation.vercel.app/", // Frontend URL
     methods: ['GET', 'POST'],        // Allowed methods
     credentials: true                // Allow credentials
 }));
