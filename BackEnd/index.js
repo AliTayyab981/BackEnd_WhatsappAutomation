@@ -1,4 +1,3 @@
-require('dotenv').config();  // Load environment variables from .env file
 const express = require("express");
 const { Client } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
@@ -8,9 +7,8 @@ const path = require("path");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
-const axios = require("axios");
+const { OpenAI } = require("openai");
 
-// Initialize Express app and Socket.io
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -34,13 +32,9 @@ app.use(
 
 app.use(express.json());
 
-// DeepAI API key setup
-// Fetch the API key securely from environment variables
-const deepai = axios.create({
-  baseURL: 'https://api.deepai.org/api/',
-  headers: {
-    'api-key': "71890ae2-afe7-4b5d-bc80-b1dfa84a1804", // Use environment variable for the API key
-  },
+// Initialize OpenAI API
+const openai = new OpenAI({
+  apiKey: "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", // Add your OpenAI API Key here
 });
 
 const client = new Client();
@@ -96,7 +90,7 @@ client.initialize();
 let savePath = path.join(__dirname, "structured_messages.xlsx"); // Default path
 
 // Save messages to Excel file
-const parseMessageUsingDeepAI = async (message) => {
+const parseMessageUsingChatGPT = async (message) => {
   const prompt = `
   Extract structured details from the following message:
 
@@ -128,14 +122,15 @@ const parseMessageUsingDeepAI = async (message) => {
   `;
 
   try {
-    // Make request to DeepAI API
-    const response = await deepai.post('text-generator', { text: prompt });
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+    });
 
-    // Assuming the response returns a JSON string, we parse it
-    const parsedData = JSON.parse(response.data.output); 
+    const parsedData = JSON.parse(response.choices[0].message.content);
     return parsedData;
   } catch (error) {
-    console.error("Error parsing message using DeepAI:", error.response ? error.response.data : error.message);
+    console.error("Error parsing message using ChatGPT:", error);
     return null;
   }
 };
@@ -147,13 +142,21 @@ client.on("message", async (msg) => {
   const timestamp = msg.timestamp;
   const chat = await msg.getChat();
 
+  // if (
+  //   !allowedGroups.includes(chat.name) &&
+  //   !allowedNumbers.includes(sender)
+  // ) {
+  //   console.log("Message from unapproved sender or group");
+  //   return;
+  // }
+
   console.log(`Message received from ${sender}: ${message}`);
 
-  // Parse message using DeepAI
-  const messageData = await parseMessageUsingDeepAI(message);
+  // Parse message using ChatGPT
+  const messageData = await parseMessageUsingChatGPT(message);
 
   if (!messageData) {
-    console.error("Failed to parse message with DeepAI");
+    console.error("Failed to parse message with ChatGPT");
     return;
   }
 
