@@ -1,3 +1,4 @@
+require('dotenv').config();  // Load environment variables from .env file
 const express = require("express");
 const { Client } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
@@ -7,7 +8,9 @@ const path = require("path");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
+const axios = require("axios");
 
+// Initialize Express app and Socket.io
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -31,6 +34,15 @@ app.use(
 
 app.use(express.json());
 
+// DeepAI API key setup
+// Fetch the API key securely from environment variables
+const deepai = axios.create({
+  baseURL: 'https://api.deepai.org/api/',
+  headers: {
+    'api-key': "71890ae2-afe7-4b5d-bc80-b1dfa84a1804", // Use environment variable for the API key
+  },
+});
+
 const client = new Client();
 
 // Define allowed groups and numbers
@@ -45,24 +57,24 @@ worksheet.columns = [
   { header: "Sender/Group", key: "senderOrGroup", width: 30 },
   { header: "Member Name", key: "memberName", width: 20 },
   { header: "Message", key: "message", width: 50 },
-  // { header: "Timestamp", key: "timestamp", width: 25 },
-  // { header: "Society", key: "society", width: 15 },
-  // { header: "Phase", key: "phase", width: 10 },
-  // { header: "Plot", key: "plot", width: 10 },
-  // { header: "Block", key: "block", width: 10 },
-  // { header: "Demand", key: "demand", width: 10 },
-  // { header: "Size", key: "size", width: 10 },
-  // { header: "Commercial", key: "commercial", width: 15 },
-  // { header: "Date", key: "date", width: 15 },
-  // { header: "Corner", key: "corner", width: 10 },
-  // { header: "Facing", key: "facing", width: 10 },
-  // { header: "Park", key: "park", width: 10 },
-  // { header: "Road", key: "road", width: 10 },
-  // { header: "Client Number", key: "clientNumber", width: 15 },
-  // { header: "Dealer Number", key: "dealerNumber", width: 15 },
-  // { header: "Portion", key: "portion", width: 15 },
-  // { header: "FullHouse", key: "fullhouse", width: 15 },
-  // { header: "Sale", key: "sale", width: 15 },
+  { header: "Timestamp", key: "timestamp", width: 25 },
+  { header: "Society", key: "society", width: 15 },
+  { header: "Phase", key: "phase", width: 10 },
+  { header: "Plot", key: "plot", width: 10 },
+  { header: "Block", key: "block", width: 10 },
+  { header: "Demand", key: "demand", width: 10 },
+  { header: "Size", key: "size", width: 10 },
+  { header: "Commercial", key: "commercial", width: 15 },
+  { header: "Date", key: "date", width: 15 },
+  { header: "Corner", key: "corner", width: 10 },
+  { header: "Facing", key: "facing", width: 10 },
+  { header: "Park", key: "park", width: 10 },
+  { header: "Road", key: "road", width: 10 },
+  { header: "Client Number", key: "clientNumber", width: 15 },
+  { header: "Dealer Number", key: "dealerNumber", width: 15 },
+  { header: "Portion", key: "portion", width: 15 },
+  { header: "FullHouse", key: "fullhouse", width: 15 },
+  { header: "Sale", key: "sale", width: 15 },
 ];
 
 // Function to check if the message already exists in the worksheet
@@ -81,96 +93,85 @@ client.on("qr", (qr) => {
 // Initialize the client
 client.initialize();
 
-// Endpoint to set save path for the Excel file
 let savePath = path.join(__dirname, "structured_messages.xlsx"); // Default path
 
-app.post("/api/save-path", (req, res) => {
-  const { path: newPath } = req.body;
-  if (newPath) {
-    savePath = newPath;
-    res.json({ message: "Path updated successfully", path: savePath });
-  } else {
-    res.status(400).json({ error: "Path is required" });
-  }
-});
-
 // Save messages to Excel file
-const saveMessageToExcel = async (messageData) => {
-  // Only save if the message is not empty and not a duplicate
-  if (messageData.text.trim() === "") return; // Skip empty messages
+const parseMessageUsingDeepAI = async (message) => {
+  const prompt = `
+  Extract structured details from the following message:
 
-  const isDuplicate = await isMessageDuplicate(messageData.text);
-  if (isDuplicate) {
-    console.log(`Message already exists: ${messageData.text}`);
-    return; // Skip duplicate messages
+  Message: "${message}"
+
+  The details should include:
+  - Chat Type (e.g., Direct, Group)
+  - Sender/Group Name
+  - Member Name (if available)
+  - Society
+  - Phase
+  - Plot
+  - Block
+  - Demand
+  - Size (e.g., Marla, Kanal)
+  - Commercial (Yes/No)
+  - Date
+  - Corner (Yes/No)
+  - Facing (e.g., North, South, East, West)
+  - Park (Yes/No)
+  - Road (Yes/No)
+  - Client Number
+  - Dealer Number
+  - Portion
+  - FullHouse (Yes/No)
+  - Sale (Yes/No)
+  
+  Please return the information in JSON format with the above keys.
+  `;
+
+  try {
+    // Make request to DeepAI API
+    const response = await deepai.post('text-generator', { text: prompt });
+
+    // Assuming the response returns a JSON string, we parse it
+    const parsedData = JSON.parse(response.data.output); 
+    return parsedData;
+  } catch (error) {
+    console.error("Error parsing message using DeepAI:", error.response ? error.response.data : error.message);
+    return null;
   }
-
-  worksheet.addRow({
-    chatType: messageData.chatType,
-    senderOrGroup: messageData.senderOrGroup,
-    memberName: messageData.memberName || "N/A",
-    message: messageData.text,
-    timestamp: new Date().toLocaleString(),
-  });
-
-  // Ensure the directory exists before writing the file
-  const dir = path.dirname(savePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  await workbook.xlsx.writeFile(savePath);
 };
-client.on("ready", () => {
-  console.log("WhatsApp is ready!");
-  io.emit("whatsappConnected"); // Emit the event when WhatsApp is connected
-});
 
-client.on("message", async (message) => {
-  if (message.hasMedia) return;
+// Listen for incoming WhatsApp messages
+client.on("message", async (msg) => {
+  const sender = msg.from;
+  const message = msg.body;
+  const timestamp = msg.timestamp;
+  const chat = await msg.getChat();
 
-  const chat = await message.getChat();
-  const contact = await message.getContact();
-  const messageData = {
-    chatType: chat.isGroup ? "Group" : "Personal",
-    senderOrGroup: chat.isGroup
-      ? chat.name
-      : contact.pushname || contact.name || "Unknown",
-    memberName: chat.isGroup
-      ? contact.pushname || contact.name || "Unknown Member"
-      : "",
-    text: message.body,
-  };
+  console.log(`Message received from ${sender}: ${message}`);
 
-  // Check if the message is from an allowed group or an allowed number
-  const isFromAllowedGroup = chat.isGroup && allowedGroups.includes(chat.name);
-  const isFromAllowedNumber =
-    !chat.isGroup && allowedNumbers.includes(contact.number);
+  // Parse message using DeepAI
+  const messageData = await parseMessageUsingDeepAI(message);
 
-  if (isFromAllowedGroup || isFromAllowedNumber) {
-    // Save message to Excel file
-    await saveMessageToExcel(messageData);
-    console.log(
-      `Message saved from ${messageData.senderOrGroup}: ${messageData.text}`
-    );
-  } else {
-    console.log(
-      `Message not saved: ${messageData.senderOrGroup}: ${messageData.text}`
-    );
+  if (!messageData) {
+    console.error("Failed to parse message with DeepAI");
+    return;
   }
+
+  // Check if message already exists to prevent duplicates
+  const duplicate = await isMessageDuplicate(messageData.message);
+  if (duplicate) {
+    console.log("Duplicate message, not saving to Excel");
+    return;
+  }
+
+  // Add message data to Excel
+  messageData.timestamp = new Date(timestamp * 1000).toLocaleString(); // Convert timestamp to readable format
+  worksheet.addRow(messageData);
+  await workbook.xlsx.writeFile(savePath);
+
+  console.log("Message saved to Excel!");
 });
 
-// Endpoint to download the Excel file
-app.get("/download-excel", (req, res) => {
-  res.download(savePath, "structured_messages.xlsx", (err) => {
-    if (err) {
-      console.error("Error downloading file:", err);
-      res.status(500).send("Failed to download file");
-    }
-  });
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
-
-// Start server and socket.io
-server.listen(PORT, () =>
-  console.log(`Server is running on http://localhost:${PORT}`)
-);
